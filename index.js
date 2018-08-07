@@ -4,8 +4,7 @@
 
 // BUGS
 // oldDestinations does not prevent visiting same site
-// harvestDestinations does not correctly grab hrefs
-// isInternal does not validate non-definitive urls i.e., '/help'
+// multiple same items being added to destinations
 
 // MODULES
 const
@@ -15,7 +14,7 @@ const
 	
 // CONFIG
 const
-	origin 	= '';
+	origin 	= 'https://www.mlc.com.au/';
 
 const requestOptions = {
 	method: 'GET'
@@ -23,42 +22,51 @@ const requestOptions = {
 
 // GENERAL
 const
-	redText = `\x1b[31m%s\x1b[0m`;
-	magentaText = `\x1b[35m%s\x1b[0m`;
-	blueText = `\x1b[34m\x1b[5m`
+	redText = `\x1b[31m%s\x1b[0m`,
+	magentaText = `\x1b[35m%s\x1b[0m`,
+	blueText = `\x1b[36m%s\x1b[0m`,
+	yellowText = `\x1b[33m%s\x1b[0m`;
 
 // MAIN
+console.log( blueText, 'Spider is waking up in the drain spout...' );
 crawl( origin );
-function crawl( origin ){
-	console.log( blueText, 'Spider is waking up in the drain spout...' );
-	let destinations = [origin];
+
+function crawl( start ){
+	let destinations = [start];
 	let oldDestinations = []; // prevent looping same pages
 	
-	let crawlMax = 3; // limit number of visited pages to control testing
-	let j = 0;
-	while ( destinations.length >= 1 && j !== crawlMax){
-		let current = destinations.length-1;
-		let options = Object.assign({},requestOptions);
-		options.url = destinations[current];
-		
-		request( options, ( err, response, body ) => {
-			console.log( magentaText, `Visiting ${ options.url }` );
-			let $ = cheerio.load( body ) 
-			oldDestinations.push( destinations.pop() );
-		
-			let content = harvestContent( $ );
-			console.log( magentaText, `Found content ${ content }` );
-			let possibleDestinations = harvestDestinations( $ );
-			console.log( magentaText, `Found destinations ${ content }` );
+	forward();
+	
+	function forward() {
+		if ( destinations.length > 0 ){
+			let current = destinations.length-1;
+			let options = Object.assign({},requestOptions);
+			options.url = destinations[current];
 			
-			for ( let i=0; i<possibleDestinations.length; i++ ){
-				if ( !oldDestinations.includes( possibleDestinations[i] ) ){
-					destinations.push( possibleDestinations[i] );
-				}
-			}
-		} );
-		j++;
-	}	
+			request( options, ( err, response, body ) => {
+				if (err) console.log( err )	
+				else {
+					console.log( magentaText, `Visiting ${ options.url }` );
+					let $ = cheerio.load( body ) 
+					oldDestinations.push( destinations.pop() );
+				
+					let content = harvestContent( $ );
+					// console.log( magentaText, `Found content ${ content }` );
+					let possibleDestinations = harvestDestinations( $ );
+					// console.log( magentaText, `Found destinations ${ possibleDestinations }` );
+					
+					for ( let i=0; i<possibleDestinations.length; i++ ){
+						if ( oldDestinations.indexOf( possibleDestinations[i] ) == -1){
+							if ( destinations.indexOf( possibleDestinations[i] ) == -1) {
+								destinations.push( possibleDestinations[i] );
+					} } }
+					
+					console.log( yellowText, `Spider's visiting list \n ----- \n ${ destinations }` );
+					console.log( `\n Spider's visiting history \n ----- \n ${ oldDestinations }` );
+					setTimeout( forward, 400 );
+		} } ) }
+		else console.log( blueText, 'Spider ran out of web...' );
+	}
 }
 
 // harvestContent : Object -> Array
@@ -72,8 +80,9 @@ function harvestContent( $ ){
 				if ( validate( text[j], 'string' ) ) {
 					let cleaned = cleanText( text[j] );
 					if ( cleaned ) content.push( cleaned );
-					else console.log( redText,`REJECTED [[${text[j]}]]` ); }
-				else console.log( redText,`COULD NOT VALIDATE [[${text[j]}]]` );
+					// else console.log( redText,`REJECTED [[${text[j]}]]` ); 
+				}
+				// else console.log( redText,`COULD NOT VALIDATE [[${text[j]}]]` );
 			}
 		}
 		
@@ -82,14 +91,14 @@ function harvestContent( $ ){
 
 function harvestDestinations( $ ){
 	let aElements = $( 'a' );
-	let destinations = [];
+	let links = [];
 	for ( let i=0; i<aElements.length; i++ ) {
-		let link = $( aElements[i] ).attr( 'href' );
-		if ( isInternal( link ) ) destinations.push( link );
+		let link = new URL( $( aElements[i] ).attr( 'href' ), origin );
+		if ( isInternal( link ) ) links.push( link );
 		else console.log( redText,`EXTERNAL LINK [[${link}]]` );
 	}
 	
-	return destinations;
+	return links;
 }
 
 // cleanText : String -> String
@@ -109,7 +118,7 @@ function cleanText( text ){
 
 // isInternal : String -> Boolean
 function isInternal( href ){
-	const r = new RegExp( '/^'+origin+'/' );
+	const r = new RegExp( '^'+origin );
 	return r.test( href );
 }
 
